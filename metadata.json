@@ -1,0 +1,8 @@
+{
+  "name": "原子化报告编辑器 - 野兽派版",
+  "description": "基于原子化内容管理理念的专业报告系统，具备 AI 历史背景分析与高保真导出功能。",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

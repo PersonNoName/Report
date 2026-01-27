@@ -5,7 +5,8 @@ import type {
     ReportInstance,
     ReportContent,
     ReportDetail,
-    ReferenceMaterial
+    ReferenceMaterial,
+    SectionNode
 } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
@@ -73,7 +74,12 @@ export async function deleteSection(sectionId: number): Promise<void> {
     });
 }
 
-export async function parseDocx(file: File): Promise<string[]> {
+interface ParseResult {
+    sections: SectionNode[];
+    fileName: string;
+}
+
+export async function parseDocx(file: File): Promise<ParseResult> {
     const formData = new FormData();
     formData.append('file', file);
 
@@ -86,7 +92,7 @@ export async function parseDocx(file: File): Promise<string[]> {
         throw new Error(`API Error: ${response.status}`);
     }
 
-    const result: ApiResult<string[]> = await response.json();
+    const result: ApiResult<ParseResult> = await response.json();
     if (result.code !== 200) {
         throw new Error(result.message);
     }
@@ -95,12 +101,25 @@ export async function parseDocx(file: File): Promise<string[]> {
 
 export async function createTemplateWithSections(
     template: Partial<ReportTemplate>,
-    sections: string[]
+    sections: SectionNode[]
 ): Promise<ReportTemplate> {
-    return request<ReportTemplate>('/templates/with-sections', {
+    const response = await fetch(`${API_BASE}/templates/with-sections`, {
         method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
         body: JSON.stringify({ template, sections }),
     });
+
+    if (!response.ok) {
+        throw new Error(`API Error: ${response.status}`);
+    }
+
+    const result: ApiResult<ReportTemplate> = await response.json();
+    if (result.code !== 200) {
+        throw new Error(result.message);
+    }
+    return result.data;
 }
 
 // ============ Report API ============

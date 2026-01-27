@@ -36,5 +36,6 @@ public interface TemplateService extends IService<ReportTemplate> {
     /**
      * 创建模板及章节
      */
-    ReportTemplate createTemplateWithSections(ReportTemplate template, List<String> sectionTitles);
+    ReportTemplate createTemplateWithSections(ReportTemplate template,
+            List<com.report.utils.WordUtil.SectionNode> sectionNodes);
 }

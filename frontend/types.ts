@@ -1,3 +1,4 @@
+
 // Backend API Types - matching Spring Boot entities
 
 export interface ReportTemplate {
@@ -19,6 +20,12 @@ export interface TemplateSection {
   sortOrder: number;
   parentId: number | null;
   isActive: boolean;
+}
+
+export interface SectionNode {
+  title: string;
+  level: number;
+  children: SectionNode[];
 }
 
 export interface ReportInstance {

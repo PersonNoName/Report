@@ -147,9 +147,26 @@ const App: React.FC = () => {
     }
   };
 
+  // Context Menu State
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; node: TreeSection } | null>(null);
+  const [parentSectionId, setParentSectionId] = useState<number | null>(null);
+
+  // Close context menu on click elsewhere
+  useEffect(() => {
+    const handleClick = () => setContextMenu(null);
+    document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
+  }, []);
+
+  const handleContextMenu = (e: React.MouseEvent, node: TreeSection) => {
+    e.preventDefault(); // Prevent default browser menu
+    setContextMenu({ x: e.clientX, y: e.clientY, node });
+  };
+
   // Section management functions
-  const openSectionDialog = (section: TemplateSection | null) => {
+  const openSectionDialog = (section: TemplateSection | null, parentId: number | null = null) => {
     setEditingSection(section);
+    setParentSectionId(parentId);
     setShowSectionDialog(true);
   };
 
@@ -174,6 +191,7 @@ const App: React.FC = () => {
           sectionKey: data.sectionKey,
           sectionType: data.sectionType as 'RICH_TEXT' | 'TABLE' | 'CHART',
           sortOrder: sections.length + 1,
+          parentId: parentSectionId // Use state
         });
       }
 
@@ -182,11 +200,14 @@ const App: React.FC = () => {
       setSections(updatedSections);
       setShowSectionDialog(false);
       setEditingSection(null);
+      setParentSectionId(null);
     } catch (error) {
       console.error('保存章节失败:', error);
       alert('保存失败，请重试');
     }
   };
+
+  // (Empty replacement to delete)
 
   const handleDeleteSection = async (sectionId: number) => {
     if (!confirm('确定删除此章节？删除后无法恢复。')) return;
@@ -293,6 +314,8 @@ const App: React.FC = () => {
     [sections, activeSectionKey]
   );
 
+  const sectionTree = useMemo(() => buildSectionTree(sections), [sections]);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -359,48 +382,16 @@ const App: React.FC = () => {
                 </button>
               </div>
             ) : (
-              sections.map(section => (
-                <div
-                  key={section.id}
-                  className={`group flex items-center justify-between px-2 py-1 mb-1 cursor-pointer transition-colors ${activeSectionKey === section.sectionKey
-                    ? 'bg-black text-white'
-                    : 'hover:bg-gray-200'
-                    }`}
-                >
-                  <div
-                    className="flex items-center gap-2 flex-1 min-w-0"
-                    onClick={() => setActiveSectionKey(section.sectionKey)}
-                  >
-                    <span>└─</span>
-                    <span className="material-symbols-outlined text-[14px]">description</span>
-                    <span className="truncate">{section.title}</span>
-                  </div>
-                  <div className={`flex gap-1 ${activeSectionKey === section.sectionKey
-                    ? 'opacity-100'
-                    : 'opacity-0 group-hover:opacity-100'
-                    } transition-opacity`}>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openSectionDialog(section);
-                      }}
-                      className="hover:bg-white/20 p-0.5 rounded"
-                      title="编辑章节"
-                    >
-                      <span className="material-symbols-outlined text-[12px]">edit</span>
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteSection(section.id);
-                      }}
-                      className="hover:bg-red-500/20 p-0.5 rounded"
-                      title="删除章节"
-                    >
-                      <span className="material-symbols-outlined text-[12px]">delete</span>
-                    </button>
-                  </div>
-                </div>
+              sectionTree.map(node => (
+                <SidebarTreeItem
+                  key={node.id}
+                  node={node}
+                  activeKey={activeSectionKey}
+                  onSelect={setActiveSectionKey}
+                  onEdit={(s) => openSectionDialog(s, s.parentId)}
+                  onDelete={handleDeleteSection}
+                  onContextMenu={handleContextMenu}
+                />
               ))
             )}
           </div>
@@ -435,25 +426,15 @@ const App: React.FC = () => {
             </div>
 
             {/* Section Editors */}
-            {sections.map(section => (
-              <EditorSection
-                key={section.id}
-                section={{
-                  id: section.sectionKey,
-                  title: section.title,
-                  content: contents[section.sectionKey]?.contentHtml || '',
-                  type: section.sectionType === 'TABLE' ? 'table' : 'markdown',
-                  lastModified: contents[section.sectionKey]?.updatedAt || ''
-                }}
-                isActive={activeSectionKey === section.sectionKey}
-                onUpdate={(content) => {
-                  handleContentChange(section.sectionKey, content);
-                }}
-                onDelete={() => { }}
-                onFocus={() => setActiveSectionKey(section.sectionKey)}
-                onSave={() => handleSaveContent(section.sectionKey, contents[section.sectionKey]?.contentHtml || '')}
-              />
-            ))}
+            <EditorTree
+              nodes={sectionTree}
+              contents={contents}
+              activeSectionKey={activeSectionKey}
+              onUpdate={handleContentChange}
+              onFocus={setActiveSectionKey}
+              onSave={(key) => handleSaveContent(key, contents[key]?.contentHtml || '')}
+              EditorSection={EditorSection}
+            />
           </div>
         </main>
 
@@ -526,13 +507,14 @@ const App: React.FC = () => {
         templates={templates}
         isOpen={showTemplateDialog}
         onSelect={handleTemplateSelect}
-        onCreate={async (name, description, sections) => {
+        onCreate={async (name, description, sectionNodes, baseDocxUrl) => {
           try {
             let newTemplate: ReportTemplate;
-            if (sections && sections.length > 0) {
-              newTemplate = await api.createTemplateWithSections({ name, description }, sections);
+            const templateData = { name, description, baseDocxUrl };
+            if (sectionNodes && sectionNodes.length > 0) {
+              newTemplate = await api.createTemplateWithSections(templateData, sectionNodes);
             } else {
-              newTemplate = await api.createTemplate({ name, description });
+              newTemplate = await api.createTemplate(templateData);
             }
             setTemplates(prev => [...prev, newTemplate]);
           } catch (error) {
@@ -552,6 +534,221 @@ const App: React.FC = () => {
           setEditingSection(null);
         }}
       />
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <div
+          className="fixed z-50 bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] py-1 min-w-[150px]"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            className="w-full text-left px-3 py-2 hover:bg-black hover:text-white text-xs font-bold font-mono"
+            onClick={() => {
+              openSectionDialog(null, contextMenu.node.parentId); // Add Sibling
+              setContextMenu(null);
+            }}
+          >
+            + 添加同级章节
+          </button>
+          <button
+            className="w-full text-left px-3 py-2 hover:bg-black hover:text-white text-xs font-bold font-mono"
+            onClick={() => {
+              openSectionDialog(null, contextMenu.node.id); // Add Child
+              setContextMenu(null);
+            }}
+          >
+            ↳ 添加子章节
+          </button>
+          <div className="h-px bg-gray-200 my-1"></div>
+          <button
+            className="w-full text-left px-3 py-2 hover:bg-red-600 hover:text-white text-xs font-bold font-mono text-red-600"
+            onClick={() => {
+              handleDeleteSection(contextMenu.node.id);
+              setContextMenu(null);
+            }}
+          >
+            × 删除章节
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- Helper Components for Hierarchy ---
+
+interface TreeSection extends TemplateSection {
+  children?: TreeSection[];
+  depth: number;
+}
+
+const buildSectionTree = (sections: TemplateSection[]): TreeSection[] => {
+  const map = new Map<number, TreeSection>();
+  const roots: TreeSection[] = [];
+
+  // Sort by sortOrder first
+  const sorted = [...sections].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+
+  // Init map
+  sorted.forEach(s => {
+    map.set(s.id, { ...s, children: [], depth: 0 });
+  });
+
+  // Build tree
+  sorted.forEach(s => {
+    const node = map.get(s.id)!;
+    if (s.parentId && map.has(s.parentId)) {
+      const parent = map.get(s.parentId)!;
+      parent.children!.push(node);
+      // We'll fix depth recursively later or just ignore depth here and compute in render
+    } else {
+      roots.push(node);
+    }
+  });
+
+  return roots;
+};
+
+// Sidebar Tree Item
+const SidebarTreeItem: React.FC<{
+  node: TreeSection;
+  activeKey: string;
+  onSelect: (key: string) => void;
+  onEdit: (s: TemplateSection) => void;
+  onDelete: (id: number) => void;
+  onContextMenu: (e: React.MouseEvent, node: TreeSection) => void;
+  depth?: number;
+}> = ({ node, activeKey, onSelect, onEdit, onDelete, onContextMenu, depth = 0 }) => {
+  return (
+    <>
+      <div
+        className={`group flex items-center justify-between px-2 py-1 mb-1 cursor-pointer transition-colors ${activeKey === node.sectionKey
+          ? 'bg-black text-white'
+          : 'hover:bg-gray-200'
+          }`}
+        style={{ paddingLeft: `${8 + depth * 12}px` }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          onContextMenu(e, node);
+        }}
+      >
+        <div
+          className="flex items-center gap-2 flex-1 min-w-0"
+          onClick={() => onSelect(node.sectionKey)}
+        >
+          {depth > 0 && <span>└</span>}
+          <span className="material-symbols-outlined text-[14px]">
+            {node.children && node.children.length > 0 ? 'folder' : 'description'}
+          </span>
+          <span className="truncate">{node.title}</span>
+        </div>
+        <div className={`flex gap-1 ${activeKey === node.sectionKey
+          ? 'opacity-100'
+          : 'opacity-0 group-hover:opacity-100'
+          } transition-opacity`}>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit(node);
+            }}
+            className="hover:bg-white/20 p-0.5 rounded"
+            title="编辑章节"
+          >
+            <span className="material-symbols-outlined text-[12px]">edit</span>
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(node.id);
+            }}
+            className="hover:bg-red-500/20 p-0.5 rounded"
+            title="删除章节"
+          >
+            <span className="material-symbols-outlined text-[12px]">delete</span>
+          </button>
+        </div>
+      </div>
+      {node.children && node.children.map(child => (
+        <SidebarTreeItem
+          key={child.id}
+          node={child}
+          activeKey={activeKey}
+          onSelect={onSelect}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          onContextMenu={onContextMenu}
+          depth={depth + 1}
+        />
+      ))}
+    </>
+  );
+};
+
+// Editor Tree
+const EditorTree: React.FC<{
+  nodes: TreeSection[];
+  contents: Record<string, ReportContent>;
+  activeSectionKey: string;
+  onUpdate: (key: string, content: string) => void;
+  onFocus: (key: string) => void;
+  onSave: (key: string) => void;
+  depth?: number;
+  EditorSection: any;
+}> = ({ nodes, contents, activeSectionKey, onUpdate, onFocus, onSave, depth = 0, EditorSection }) => {
+  return (
+    <div className="space-y-6">
+      {nodes.map(node => (
+        <div key={node.id} className="relative">
+          {/* Visual hierarchy indicator */}
+          {depth > 0 && (
+            <div
+              className="absolute left-[-16px] top-0 bottom-0 w-px bg-gray-300"
+              style={{ left: -16 }}
+            />
+          )}
+
+          <div style={{ marginLeft: depth > 0 ? 16 : 0 }}>
+            {/* Only render editor if leaf? No, user might want to edit parent content too if it's Mixed content. 
+                 But usually folder nodes don't have content? 
+                 Let's assume all nodes can have content for now. */}
+            <h3 className="font-bold text-sm mb-2 opacity-50 uppercase flex items-center gap-2">
+              {depth > 0 && <span>↳</span>} {node.title}
+            </h3>
+
+            <EditorSection
+              section={{
+                id: node.sectionKey,
+                title: node.title,
+                content: contents[node.sectionKey]?.contentHtml || '',
+                type: node.sectionType === 'TABLE' ? 'table' : 'markdown',
+                lastModified: contents[node.sectionKey]?.updatedAt || ''
+              }}
+              isActive={activeSectionKey === node.sectionKey}
+              onUpdate={(content: string) => onUpdate(node.sectionKey, content)}
+              onDelete={() => { }}
+              onFocus={() => onFocus(node.sectionKey)}
+              onSave={() => onSave(node.sectionKey)}
+            />
+
+            {/* Recursive Children */}
+            {node.children && node.children.length > 0 && (
+              <div className="mt-6 border-l-2 border-dashed border-gray-200 pl-4 py-2">
+                <EditorTree
+                  nodes={node.children}
+                  contents={contents}
+                  activeSectionKey={activeSectionKey}
+                  onUpdate={onUpdate}
+                  onFocus={onFocus}
+                  onSave={onSave}
+                  depth={depth + 1}
+                  EditorSection={EditorSection}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
     </div>
   );
 };

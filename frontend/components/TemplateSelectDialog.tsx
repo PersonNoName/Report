@@ -1,5 +1,5 @@
 import React from 'react';
-import type { ReportTemplate } from '../types';
+import type { ReportTemplate, SectionNode } from '../types';
 import { BrutalButton } from './BrutalButton';
 
 import { parseDocx } from '../services/api';
@@ -8,9 +8,29 @@ interface TemplateSelectDialogProps {
     templates: ReportTemplate[];
     isOpen: boolean;
     onSelect: (templateId: number) => void;
-    onCreate: (name: string, description: string, sections?: string[]) => void;
+    onCreate: (name: string, description: string, sections?: SectionNode[], baseDocxUrl?: string) => void;
     onClose: () => void;
 }
+
+const SectionTree: React.FC<{ nodes: SectionNode[], level?: number }> = ({ nodes, level = 0 }) => {
+    return (
+        <ul className="space-y-1">
+            {nodes.map((node, idx) => (
+                <li key={idx} className="text-xs font-mono">
+                    <div className="flex gap-2 items-center" style={{ paddingLeft: `${level * 16}px` }}>
+                        <span className="text-gray-400 select-none">
+                            {level === 0 ? `${idx + 1}.` : '└─'}
+                        </span>
+                        <span>{node.title}</span>
+                    </div>
+                    {node.children && node.children.length > 0 && (
+                        <SectionTree nodes={node.children} level={level + 1} />
+                    )}
+                </li>
+            ))}
+        </ul>
+    );
+};
 
 export const TemplateSelectDialog: React.FC<TemplateSelectDialogProps> = ({
     templates,
@@ -23,7 +43,8 @@ export const TemplateSelectDialog: React.FC<TemplateSelectDialogProps> = ({
     const [isCreating, setIsCreating] = React.useState(false);
     const [newTemplateName, setNewTemplateName] = React.useState('');
     const [newTemplateDesc, setNewTemplateDesc] = React.useState('');
-    const [parsedSections, setParsedSections] = React.useState<string[]>([]);
+    const [parsedSections, setParsedSections] = React.useState<SectionNode[]>([]);
+    const [parsedFileName, setParsedFileName] = React.useState<string>('');
     const [isParsing, setIsParsing] = React.useState(false);
 
     if (!isOpen) return null;
@@ -33,11 +54,12 @@ export const TemplateSelectDialog: React.FC<TemplateSelectDialogProps> = ({
             alert('请输入模板名称');
             return;
         }
-        onCreate(newTemplateName, newTemplateDesc, parsedSections);
+        onCreate(newTemplateName, newTemplateDesc, parsedSections, parsedFileName);
         setIsCreating(false);
         setNewTemplateName('');
         setNewTemplateDesc('');
         setParsedSections([]);
+        setParsedFileName('');
     };
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -46,8 +68,9 @@ export const TemplateSelectDialog: React.FC<TemplateSelectDialogProps> = ({
 
         try {
             setIsParsing(true);
-            const sections = await parseDocx(file);
-            setParsedSections(sections);
+            const result = await parseDocx(file);
+            setParsedSections(result.sections);
+            setParsedFileName(result.fileName);
             if (!newTemplateName && file.name) {
                 setNewTemplateName(file.name.replace(/\.[^/.]+$/, ""));
             }
@@ -123,13 +146,13 @@ export const TemplateSelectDialog: React.FC<TemplateSelectDialogProps> = ({
                                     {isParsing && <span className="text-xs text-gray-500 animate-pulse">解析中...</span>}
                                 </div>
                                 <p className="text-[10px] text-gray-500 mb-3">
-                                    支持自动识别 "标题 1" (Heading 1) 样式的段落
+                                    支持自动识别各级标题 (Heading 1-6)
                                 </p>
 
                                 {parsedSections.length > 0 && (
                                     <div className="bg-gray-50 border-2 border-black p-2">
                                         <div className="text-[10px] font-bold border-b border-gray-300 pb-1 mb-2 flex justify-between">
-                                            <span>已识别到 {parsedSections.length} 个章节:</span>
+                                            <span>已识别到结构:</span>
                                             <button
                                                 className="text-red-500 hover:underline"
                                                 onClick={() => setParsedSections([])}
@@ -137,14 +160,9 @@ export const TemplateSelectDialog: React.FC<TemplateSelectDialogProps> = ({
                                                 清除
                                             </button>
                                         </div>
-                                        <ul className="space-y-1 max-h-40 overflow-y-auto">
-                                            {parsedSections.map((section, idx) => (
-                                                <li key={idx} className="text-xs font-mono flex gap-2">
-                                                    <span className="text-gray-400 select-none">{idx + 1}.</span>
-                                                    <span>{section}</span>
-                                                </li>
-                                            ))}
-                                        </ul>
+                                        <div className="max-h-60 overflow-y-auto">
+                                            <SectionTree nodes={parsedSections} />
+                                        </div>
                                     </div>
                                 )}
                             </div>

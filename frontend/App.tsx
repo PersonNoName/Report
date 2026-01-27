@@ -113,10 +113,11 @@ const App: React.FC = () => {
 
   // Create new report - show template selection dialog
   const createNewReport = () => {
-    if (templates.length === 0) {
-      alert('暂无可用模板');
-      return;
-    }
+    // Allow opening dialog even if no templates, so user can create one
+    // if (templates.length === 0) {
+    //   alert('暂无可用模板');
+    //   return;
+    // }
     setShowTemplateDialog(true);
   };
 
@@ -320,11 +321,9 @@ const App: React.FC = () => {
           </div>
         </div>
         <div className="flex items-center gap-px bg-black border border-black h-8">
-          {!currentReport && (
-            <BrutalButton variant="secondary" className="border-r border-black h-full" onClick={createNewReport}>
-              新建报告
-            </BrutalButton>
-          )}
+          <BrutalButton variant="secondary" className="border-r border-black h-full" onClick={createNewReport}>
+            新建报告
+          </BrutalButton>
           <BrutalButton variant="secondary" className="border-r border-black h-full" onClick={handleFinalize}>
             归档
           </BrutalButton>
@@ -527,6 +526,20 @@ const App: React.FC = () => {
         templates={templates}
         isOpen={showTemplateDialog}
         onSelect={handleTemplateSelect}
+        onCreate={async (name, description) => {
+          try {
+            const newTemplate = await api.createTemplate({ name, description });
+            setTemplates(prev => [...prev, newTemplate]);
+            // Optional: Auto-select or just show it in list
+            // For now, let user select it manually or auto-select:
+            // handleTemplateSelect(newTemplate.id); 
+            // Better UX: close dialog and start report creation directly?
+            // Let's just add to list for now to keep it simple as spec'd
+          } catch (error) {
+            console.error('创建模板失败:', error);
+            alert('创建模板失败');
+          }
+        }}
         onClose={() => setShowTemplateDialog(false)}
       />
 

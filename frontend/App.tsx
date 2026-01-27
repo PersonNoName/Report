@@ -9,6 +9,8 @@ import type {
 } from './types';
 import { BrutalButton } from './components/BrutalButton';
 import { EditorSection } from './components/EditorSection';
+import { TemplateSelectDialog } from './components/TemplateSelectDialog';
+import { SectionFormDialog } from './components/SectionFormDialog';
 import * as api from './services/api';
 
 const App: React.FC = () => {
@@ -22,6 +24,12 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState('');
+
+  // Dialog states
+  const [showTemplateDialog, setShowTemplateDialog] = useState(false);
+  const [showSectionDialog, setShowSectionDialog] = useState(false);
+  const [editingSection, setEditingSection] = useState<TemplateSection | null>(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
 
   const [metadata, setMetadata] = useState<ReportMetadata>({
     title: '新报告',
@@ -40,10 +48,14 @@ const App: React.FC = () => {
       setIsLoading(true);
 
       // Load templates
+      console.log('正在加载模板列表...');
       const templateList = await api.getTemplates();
+      console.log('模板加载结果:', templateList);
       setTemplates(templateList);
 
       if (templateList.length > 0) {
+        setSelectedTemplateId(templateList[0].id);
+
         // Load sections for first template
         const sectionList = await api.getTemplateSections(templateList[0].id);
         setSections(sectionList);
@@ -60,6 +72,7 @@ const App: React.FC = () => {
       }
     } catch (error) {
       console.error('加载数据失败:', error);
+      alert('加载数据失败，请检查后端服务是否正常运行');
     } finally {
       setIsLoading(false);
     }
@@ -98,13 +111,31 @@ const App: React.FC = () => {
     }
   };
 
-  // Create new report
-  const createNewReport = async () => {
-    if (templates.length === 0) return;
+  // Create new report - show template selection dialog
+  const createNewReport = () => {
+    if (templates.length === 0) {
+      alert('暂无可用模板');
+      return;
+    }
+    setShowTemplateDialog(true);
+  };
+
+  // Handle template selection and create report
+  const handleTemplateSelect = async (templateId: number) => {
+    setShowTemplateDialog(false);
+    setSelectedTemplateId(templateId);
 
     try {
+      // Load sections for selected template
+      const sectionList = await api.getTemplateSections(templateId);
+      setSections(sectionList);
+      if (sectionList.length > 0) {
+        setActiveSectionKey(sectionList[0].sectionKey);
+      }
+
+      // Create new report with selected template
       const report = await api.createReport({
-        templateId: templates[0].id,
+        templateId,
         reportName: metadata.title,
         startDate: new Date().toISOString().split('T')[0],
         endDate: new Date().toISOString().split('T')[0]
@@ -112,6 +143,70 @@ const App: React.FC = () => {
       await loadReport(report.id);
     } catch (error) {
       console.error('创建报告失败:', error);
+    }
+  };
+
+  // Section management functions
+  const openSectionDialog = (section: TemplateSection | null) => {
+    setEditingSection(section);
+    setShowSectionDialog(true);
+  };
+
+  const handleSaveSection = async (data: { title: string; sectionType: string; sectionKey: string }) => {
+    const templateId = selectedTemplateId || currentReport?.templateId;
+    if (!templateId) {
+      alert('请先选择模板或创建报告');
+      return;
+    }
+
+    try {
+      if (editingSection) {
+        // Update existing section
+        await api.updateSection(editingSection.id, {
+          title: data.title,
+          sectionType: data.sectionType as 'RICH_TEXT' | 'TABLE' | 'CHART',
+        });
+      } else {
+        // Add new section
+        await api.addSection(templateId, {
+          title: data.title,
+          sectionKey: data.sectionKey,
+          sectionType: data.sectionType as 'RICH_TEXT' | 'TABLE' | 'CHART',
+          sortOrder: sections.length + 1,
+        });
+      }
+
+      // Refresh sections list
+      const updatedSections = await api.getTemplateSections(templateId);
+      setSections(updatedSections);
+      setShowSectionDialog(false);
+      setEditingSection(null);
+    } catch (error) {
+      console.error('保存章节失败:', error);
+      alert('保存失败，请重试');
+    }
+  };
+
+  const handleDeleteSection = async (sectionId: number) => {
+    if (!confirm('确定删除此章节？删除后无法恢复。')) return;
+
+    const templateId = selectedTemplateId || currentReport?.templateId;
+    if (!templateId) return;
+
+    try {
+      await api.deleteSection(sectionId);
+
+      // Refresh sections list
+      const updatedSections = await api.getTemplateSections(templateId);
+      setSections(updatedSections);
+
+      // Reset active section if deleted
+      if (sections.find(s => s.id === sectionId)?.sectionKey === activeSectionKey) {
+        setActiveSectionKey(updatedSections[0]?.sectionKey || '');
+      }
+    } catch (error) {
+      console.error('删除章节失败:', error);
+      alert('删除失败，请重试');
     }
   };
 
@@ -244,23 +339,71 @@ const App: React.FC = () => {
         <aside className="w-64 flex-none border-r-4 border-black flex flex-col bg-white">
           <div className="p-3 border-b-2 border-black bg-black text-white flex justify-between items-center">
             <span className="text-xs font-bold uppercase tracking-widest">目录结构</span>
-            <span className="material-symbols-outlined text-sm">folder_open</span>
+            <button
+              onClick={() => openSectionDialog(null)}
+              className="hover:bg-white/20 p-1 rounded transition-colors"
+              title="添加章节"
+            >
+              <span className="material-symbols-outlined text-sm">add</span>
+            </button>
           </div>
           <div className="flex-1 overflow-y-auto p-2 text-[10px] font-bold uppercase leading-loose">
-            {sections.map(section => (
-              <div
-                key={section.id}
-                onClick={() => setActiveSectionKey(section.sectionKey)}
-                className={`flex items-center gap-2 px-2 py-1 mb-1 cursor-pointer transition-colors ${activeSectionKey === section.sectionKey
+            {sections.length === 0 ? (
+              <div className="text-center py-8 text-gray-400">
+                <span className="material-symbols-outlined text-2xl block mb-2">folder_open</span>
+                <p>暂无章节</p>
+                <button
+                  onClick={() => openSectionDialog(null)}
+                  className="mt-2 text-blue-600 hover:underline normal-case"
+                >
+                  添加第一个章节
+                </button>
+              </div>
+            ) : (
+              sections.map(section => (
+                <div
+                  key={section.id}
+                  className={`group flex items-center justify-between px-2 py-1 mb-1 cursor-pointer transition-colors ${activeSectionKey === section.sectionKey
                     ? 'bg-black text-white'
                     : 'hover:bg-gray-200'
-                  }`}
-              >
-                <span>└─</span>
-                <span className="material-symbols-outlined text-[14px]">description</span>
-                <span className="truncate">{section.title}</span>
-              </div>
-            ))}
+                    }`}
+                >
+                  <div
+                    className="flex items-center gap-2 flex-1 min-w-0"
+                    onClick={() => setActiveSectionKey(section.sectionKey)}
+                  >
+                    <span>└─</span>
+                    <span className="material-symbols-outlined text-[14px]">description</span>
+                    <span className="truncate">{section.title}</span>
+                  </div>
+                  <div className={`flex gap-1 ${activeSectionKey === section.sectionKey
+                    ? 'opacity-100'
+                    : 'opacity-0 group-hover:opacity-100'
+                    } transition-opacity`}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openSectionDialog(section);
+                      }}
+                      className="hover:bg-white/20 p-0.5 rounded"
+                      title="编辑章节"
+                    >
+                      <span className="material-symbols-outlined text-[12px]">edit</span>
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteSection(section.id);
+                      }}
+                      className="hover:bg-red-500/20 p-0.5 rounded"
+                      title="删除章节"
+                    >
+                      <span className="material-symbols-outlined text-[12px]">delete</span>
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
           <div className="p-4 border-t-2 border-black">
             <div className="bg-gray-100 p-2 border border-black text-[10px]">
@@ -378,6 +521,24 @@ const App: React.FC = () => {
           </div>
         </aside>
       </div>
+
+      {/* Dialogs */}
+      <TemplateSelectDialog
+        templates={templates}
+        isOpen={showTemplateDialog}
+        onSelect={handleTemplateSelect}
+        onClose={() => setShowTemplateDialog(false)}
+      />
+
+      <SectionFormDialog
+        isOpen={showSectionDialog}
+        section={editingSection}
+        onSave={handleSaveSection}
+        onClose={() => {
+          setShowSectionDialog(false);
+          setEditingSection(null);
+        }}
+      />
     </div>
   );
 };

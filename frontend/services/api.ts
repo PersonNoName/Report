@@ -146,3 +146,11 @@ export async function deleteReference(id: number): Promise<void> {
         method: 'DELETE',
     });
 }
+
+// ============ AI API ============
+export async function polishContent(content: string): Promise<string> {
+    return request<string>('/ai/polish', {
+        method: 'POST',
+        body: JSON.stringify({ content }),
+    });
+}

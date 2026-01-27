@@ -32,4 +32,9 @@ public interface TemplateService extends IService<ReportTemplate> {
      * 删除章节（软删除）
      */
     void deleteSection(Long sectionId);
+
+    /**
+     * 创建模板及章节
+     */
+    ReportTemplate createTemplateWithSections(ReportTemplate template, List<String> sectionTitles);
 }

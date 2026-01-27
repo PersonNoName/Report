@@ -73,6 +73,36 @@ export async function deleteSection(sectionId: number): Promise<void> {
     });
 }
 
+export async function parseDocx(file: File): Promise<string[]> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(`${API_BASE}/templates/parse`, {
+        method: 'POST',
+        body: formData,
+    });
+
+    if (!response.ok) {
+        throw new Error(`API Error: ${response.status}`);
+    }
+
+    const result: ApiResult<string[]> = await response.json();
+    if (result.code !== 200) {
+        throw new Error(result.message);
+    }
+    return result.data;
+}
+
+export async function createTemplateWithSections(
+    template: Partial<ReportTemplate>,
+    sections: string[]
+): Promise<ReportTemplate> {
+    return request<ReportTemplate>('/templates/with-sections', {
+        method: 'POST',
+        body: JSON.stringify({ template, sections }),
+    });
+}
+
 // ============ Report API ============
 
 export async function getReports(userId?: number): Promise<ReportInstance[]> {

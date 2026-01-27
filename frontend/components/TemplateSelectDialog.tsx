@@ -2,11 +2,13 @@ import React from 'react';
 import type { ReportTemplate } from '../types';
 import { BrutalButton } from './BrutalButton';
 
+import { parseDocx } from '../services/api';
+
 interface TemplateSelectDialogProps {
     templates: ReportTemplate[];
     isOpen: boolean;
     onSelect: (templateId: number) => void;
-    onCreate: (name: string, description: string) => void;
+    onCreate: (name: string, description: string, sections?: string[]) => void;
     onClose: () => void;
 }
 
@@ -21,6 +23,8 @@ export const TemplateSelectDialog: React.FC<TemplateSelectDialogProps> = ({
     const [isCreating, setIsCreating] = React.useState(false);
     const [newTemplateName, setNewTemplateName] = React.useState('');
     const [newTemplateDesc, setNewTemplateDesc] = React.useState('');
+    const [parsedSections, setParsedSections] = React.useState<string[]>([]);
+    const [isParsing, setIsParsing] = React.useState(false);
 
     if (!isOpen) return null;
 
@@ -29,10 +33,30 @@ export const TemplateSelectDialog: React.FC<TemplateSelectDialogProps> = ({
             alert('请输入模板名称');
             return;
         }
-        onCreate(newTemplateName, newTemplateDesc);
+        onCreate(newTemplateName, newTemplateDesc, parsedSections);
         setIsCreating(false);
         setNewTemplateName('');
         setNewTemplateDesc('');
+        setParsedSections([]);
+    };
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        try {
+            setIsParsing(true);
+            const sections = await parseDocx(file);
+            setParsedSections(sections);
+            if (!newTemplateName && file.name) {
+                setNewTemplateName(file.name.replace(/\.[^/.]+$/, ""));
+            }
+        } catch (error) {
+            console.error('解析失败:', error);
+            alert('解析Word文档失败，请检查文件格式');
+        } finally {
+            setIsParsing(false);
+        }
     };
 
     return (
@@ -44,9 +68,9 @@ export const TemplateSelectDialog: React.FC<TemplateSelectDialogProps> = ({
             />
 
             {/* Dialog */}
-            <div className="relative bg-white border-4 border-black shadow-[8px_8px_0_0_rgba(0,0,0,1)] w-full max-w-2xl mx-4">
+            <div className="relative bg-white border-4 border-black shadow-[8px_8px_0_0_rgba(0,0,0,1)] w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col">
                 {/* Header */}
-                <div className="bg-black text-white p-4 flex justify-between items-center">
+                <div className="bg-black text-white p-4 flex justify-between items-center flex-none">
                     <h2 className="text-lg font-bold uppercase tracking-widest">
                         {isCreating ? '创建新模板' : '选择报告模板'}
                     </h2>
@@ -59,7 +83,7 @@ export const TemplateSelectDialog: React.FC<TemplateSelectDialogProps> = ({
                 </div>
 
                 {/* Content */}
-                <div className="p-6">
+                <div className="p-6 flex-1 overflow-y-auto">
                     {isCreating ? (
                         <div className="space-y-4">
                             <div>
@@ -75,11 +99,54 @@ export const TemplateSelectDialog: React.FC<TemplateSelectDialogProps> = ({
                             <div>
                                 <label className="block text-xs font-bold uppercase mb-1">描述 (可选)</label>
                                 <textarea
-                                    className="w-full border-2 border-black p-2 font-mono text-sm focus:ring-0 h-24 resize-none"
+                                    className="w-full border-2 border-black p-2 font-mono text-sm focus:ring-0 h-16 resize-none"
                                     placeholder="简要描述此模板的用途..."
                                     value={newTemplateDesc}
                                     onChange={e => setNewTemplateDesc(e.target.value)}
                                 />
+                            </div>
+
+                            <div className="border-t-2 border-dashed border-gray-300 pt-4">
+                                <label className="block text-xs font-bold uppercase mb-2">
+                                    从Word导入章节 (可选)
+                                </label>
+                                <div className="flex items-center gap-2 mb-2">
+                                    <label className="cursor-pointer bg-gray-100 border-2 border-black px-3 py-1 text-xs font-bold hover:bg-gray-200 transition-colors">
+                                        上传 .docx 文件
+                                        <input
+                                            type="file"
+                                            accept=".docx"
+                                            className="hidden"
+                                            onChange={handleFileUpload}
+                                        />
+                                    </label>
+                                    {isParsing && <span className="text-xs text-gray-500 animate-pulse">解析中...</span>}
+                                </div>
+                                <p className="text-[10px] text-gray-500 mb-3">
+                                    支持自动识别 "标题 1" (Heading 1) 样式的段落
+                                </p>
+
+                                {parsedSections.length > 0 && (
+                                    <div className="bg-gray-50 border-2 border-black p-2">
+                                        <div className="text-[10px] font-bold border-b border-gray-300 pb-1 mb-2 flex justify-between">
+                                            <span>已识别到 {parsedSections.length} 个章节:</span>
+                                            <button
+                                                className="text-red-500 hover:underline"
+                                                onClick={() => setParsedSections([])}
+                                            >
+                                                清除
+                                            </button>
+                                        </div>
+                                        <ul className="space-y-1 max-h-40 overflow-y-auto">
+                                            {parsedSections.map((section, idx) => (
+                                                <li key={idx} className="text-xs font-mono flex gap-2">
+                                                    <span className="text-gray-400 select-none">{idx + 1}.</span>
+                                                    <span>{section}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     ) : (
@@ -132,7 +199,7 @@ export const TemplateSelectDialog: React.FC<TemplateSelectDialogProps> = ({
                 </div>
 
                 {/* Footer */}
-                <div className="border-t-2 border-black p-4 flex justify-end gap-2">
+                <div className="border-t-2 border-black p-4 flex justify-end gap-2 flex-none">
                     {isCreating ? (
                         <>
                             <BrutalButton variant="secondary" onClick={() => setIsCreating(false)}>

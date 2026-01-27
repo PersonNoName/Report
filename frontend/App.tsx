@@ -526,15 +526,15 @@ const App: React.FC = () => {
         templates={templates}
         isOpen={showTemplateDialog}
         onSelect={handleTemplateSelect}
-        onCreate={async (name, description) => {
+        onCreate={async (name, description, sections) => {
           try {
-            const newTemplate = await api.createTemplate({ name, description });
+            let newTemplate: ReportTemplate;
+            if (sections && sections.length > 0) {
+              newTemplate = await api.createTemplateWithSections({ name, description }, sections);
+            } else {
+              newTemplate = await api.createTemplate({ name, description });
+            }
             setTemplates(prev => [...prev, newTemplate]);
-            // Optional: Auto-select or just show it in list
-            // For now, let user select it manually or auto-select:
-            // handleTemplateSelect(newTemplate.id); 
-            // Better UX: close dialog and start report creation directly?
-            // Let's just add to list for now to keep it simple as spec'd
           } catch (error) {
             console.error('创建模板失败:', error);
             alert('创建模板失败');

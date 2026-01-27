@@ -55,4 +55,27 @@ public class TemplateServiceImpl extends ServiceImpl<ReportTemplateMapper, Repor
         section.setIsActive(false);
         sectionMapper.updateById(section);
     }
+
+    @Override
+    @org.springframework.transaction.annotation.Transactional(rollbackFor = Exception.class)
+    public ReportTemplate createTemplateWithSections(ReportTemplate template, List<String> sectionTitles) {
+        // 1. Save template
+        template.setIsActive(true);
+        save(template);
+
+        // 2. Save sections
+        if (sectionTitles != null && !sectionTitles.isEmpty()) {
+            for (int i = 0; i < sectionTitles.size(); i++) {
+                TemplateSection section = new TemplateSection();
+                section.setTemplateId(template.getId());
+                section.setTitle(sectionTitles.get(i));
+                section.setSectionKey("section_" + System.currentTimeMillis() + "_" + i); // Auto-generate key
+                section.setSectionType("RICH_TEXT");
+                section.setSortOrder(i + 1);
+                section.setIsActive(true);
+                sectionMapper.insert(section);
+            }
+        }
+        return template;
+    }
 }

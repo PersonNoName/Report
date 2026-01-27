@@ -73,9 +73,35 @@ public class TemplateController {
     /**
      * 删除章节
      */
+    /**
+     * 删除章节
+     */
     @DeleteMapping("/sections/{sectionId}")
     public Result<Void> deleteSection(@PathVariable Long sectionId) {
         templateService.deleteSection(sectionId);
         return Result.success(null);
+    }
+
+    /**
+     * 解析Word获取章节标题
+     */
+    @PostMapping("/parse")
+    public Result<List<String>> parseWord(@RequestParam("file") org.springframework.web.multipart.MultipartFile file)
+            throws java.io.IOException {
+        return Result.success(com.report.utils.WordUtil.parseHeadings(file));
+    }
+
+    /**
+     * 创建模板（支持带章节）
+     */
+    @PostMapping("/with-sections")
+    public Result<ReportTemplate> createTemplateWithSections(@RequestBody CreateTemplateRequest request) {
+        return Result.success(templateService.createTemplateWithSections(request.getTemplate(), request.getSections()));
+    }
+
+    @lombok.Data
+    public static class CreateTemplateRequest {
+        private ReportTemplate template;
+        private List<String> sections;
     }
 }

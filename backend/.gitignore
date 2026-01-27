@@ -1,0 +1,21 @@
+# 后端编译产物
+backend/target/
+
+# Maven Wrapper
+backend/.mvn/
+backend/mvnw
+backend/mvnw.cmd
+
+# 数据库文件
+backend/data/
+
+# 上传文件
+backend/uploads/
+backend/templates/*.docx
+
+# Spring Boot
+backend/src/main/resources/application-local.yml
+
+# IDE
+backend/.idea/
+backend/*.iml

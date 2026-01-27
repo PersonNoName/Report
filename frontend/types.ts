@@ -1,4 +1,75 @@
+// Backend API Types - matching Spring Boot entities
 
+export interface ReportTemplate {
+  id: number;
+  name: string;
+  description: string;
+  baseDocxUrl: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TemplateSection {
+  id: number;
+  templateId: number;
+  sectionKey: string;
+  title: string;
+  sectionType: 'RICH_TEXT' | 'TABLE' | 'CHART';
+  sortOrder: number;
+  parentId: number | null;
+  isActive: boolean;
+}
+
+export interface ReportInstance {
+  id: number;
+  templateId: number;
+  userId: number;
+  reportName: string;
+  startDate: string;
+  endDate: string;
+  status: 'DRAFT' | 'FINALIZED';
+  sourceExcelUrl: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReportContent {
+  id: number;
+  reportInstanceId: number;
+  sectionKey: string;
+  contentHtml: string;
+  contentJson: Record<string, unknown>;
+  version: number;
+  updatedAt: string;
+}
+
+export interface ReferenceMaterial {
+  id: number;
+  sectionKey: string;
+  contentText: string;
+  tags: string;
+  sourceReportId: number | null;
+  isStandard: boolean;
+  createdBy: number | null;
+  createdAt: string;
+}
+
+// API Response wrapper
+export interface ApiResult<T> {
+  code: number;
+  message: string;
+  data: T;
+}
+
+// Report detail response
+export interface ReportDetail {
+  report: ReportInstance;
+  sections: TemplateSection[];
+  contents: Record<string, ReportContent>;
+}
+
+// Legacy types for backward compatibility
 export interface ReportSection {
   id: string;
   title: string;
@@ -20,7 +91,6 @@ export interface HistoricalFragment {
   content: string;
   matchScore: number;
   source: string;
-  // Added relatedTo property to fix type errors in components that import from this file (e.g., app/page.tsx)
   relatedTo: string;
 }
 

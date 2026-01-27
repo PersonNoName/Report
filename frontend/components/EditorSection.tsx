@@ -6,6 +6,7 @@ interface EditorSectionProps {
   section: ReportSection;
   onUpdate: (content: string) => void;
   onDelete: () => void;
+  onSave?: () => void;
   isActive: boolean;
   onFocus: () => void;
 }
@@ -14,11 +15,12 @@ export const EditorSection: React.FC<EditorSectionProps> = ({
   section,
   onUpdate,
   onDelete,
+  onSave,
   isActive,
   onFocus
 }) => {
   return (
-    <div 
+    <div
       className={`border-2 border-black transition-all ${isActive ? 'shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]' : 'opacity-80 hover:opacity-100'}`}
       onClick={onFocus}
     >
@@ -28,8 +30,13 @@ export const EditorSection: React.FC<EditorSectionProps> = ({
         </span>
         {isActive && (
           <div className="flex gap-4 text-[10px] font-bold">
-            <button className="hover:underline underline-offset-4">保存</button>
-            <button 
+            <button
+              className="hover:underline underline-offset-4"
+              onClick={(e) => { e.stopPropagation(); onSave?.(); }}
+            >
+              保存
+            </button>
+            <button
               className="hover:underline underline-offset-4 text-red-500"
               onClick={(e) => { e.stopPropagation(); onDelete(); }}
             >
@@ -38,7 +45,7 @@ export const EditorSection: React.FC<EditorSectionProps> = ({
           </div>
         )}
       </div>
-      
+
       {isActive && (
         <div className="p-0 border-b-2 border-black flex items-center bg-gray-100 text-[10px] font-bold overflow-x-auto">
           <button className="px-3 py-1 border-r border-black hover:bg-black hover:text-white uppercase">加粗</button>

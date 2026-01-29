@@ -1,25 +1,21 @@
 package com.report.service.impl;
 
-import com.deepoove.poi.XWPFTemplate;
-import com.deepoove.poi.config.Configure;
 import com.report.dto.SectionData;
 import com.report.entity.ReportContent;
 import com.report.entity.ReportInstance;
 import com.report.entity.ReportTemplate;
 import com.report.entity.TemplateSection;
+import com.report.entity.TemplateStyle;
 import com.report.mapper.ReportContentMapper;
 import com.report.mapper.ReportInstanceMapper;
-import com.report.policy.SectionRenderPolicy;
 import com.report.service.ExportService;
 import com.report.service.TemplateService;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 
-import java.io.InputStream;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -28,6 +24,11 @@ import java.nio.file.Paths;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * 导出服务实现
+ * 优先使用模板式导出（保持100%样式一致）
+ * 如果没有模板文件，则回退到 WordExportService
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
@@ -36,9 +37,8 @@ public class ExportServiceImpl implements ExportService {
     private final ReportInstanceMapper reportMapper;
     private final ReportContentMapper contentMapper;
     private final TemplateService templateService;
-
-    @Value("${file.template-dir:./templates}")
-    private String templateDir;
+    private final WordExportService wordExportService;
+    private final TemplateBasedExportService templateBasedExportService;
 
     @Value("${file.upload-dir:./uploads}")
     private String uploadDir;
@@ -57,78 +57,74 @@ public class ExportServiceImpl implements ExportService {
                 .collect(Collectors.toMap(
                         ReportContent::getSectionKey,
                         c -> c.getContentHtml() != null ? c.getContentHtml() : "",
-                        (v1, v2) -> v1)); // 处理重复 key
+                        (v1, v2) -> v1));
 
         // 3. 加载模板章节结构
         List<TemplateSection> sections = templateService.getTemplateSections(report.getTemplateId());
-        List<SectionData> sectionTree = buildSectionDataTree(sections, contentMap);
 
-        // 4. 准备渲染数据
-        Map<String, Object> data = new HashMap<>();
-        data.put("reportName", report.getReportName());
-        data.put("dateRange", formatDateRange(report));
-        data.put("sections", sectionTree);
+        // 4. 获取模板文件路径
+        Path templatePath = getTemplatePath(report.getTemplateId());
 
-        // 5. 配置 POI-TL
-        Configure config = Configure.builder()
-                .bind("sections", new SectionRenderPolicy())
-                .build();
+        // 5. 设置响应头
+        String fileName = URLEncoder.encode(report.getReportName() + ".docx", StandardCharsets.UTF_8);
+        response.setContentType("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        response.setHeader("Content-Disposition", "attachment; filename=\"" + fileName + "\"");
 
-        // 6. 加载 Word 模板
-        InputStream templateStream = loadTemplate(report.getTemplateId());
+        // 6. 根据是否有模板文件选择导出方式
+        if (templatePath != null && Files.exists(templatePath)) {
+            // 模板式导出：保持100%样式一致
+            log.info("使用模板式导出，模板路径: {}", templatePath);
 
-        // 7. 渲染并输出
-        try (XWPFTemplate template = XWPFTemplate.compile(templateStream, config).render(data)) {
-            String fileName = URLEncoder.encode(report.getReportName() + ".docx", StandardCharsets.UTF_8);
-            response.setContentType("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-            response.setHeader("Content-Disposition", "attachment; filename=\"" + fileName + "\"");
-            template.writeAndClose(response.getOutputStream());
-        } finally {
-            if (templateStream != null) {
-                templateStream.close();
-            }
+            // 获取正文样式配置
+            Map<String, TemplateStyle> styleConfig = templateService.getTemplateStyleMap(report.getTemplateId());
+            TemplateStyle bodyStyle = styleConfig.get("BODY");
+
+            templateBasedExportService.exportWithTemplate(
+                    templatePath,
+                    sections,
+                    contentMap,
+                    bodyStyle,
+                    response.getOutputStream());
+
+            log.info("成功导出报告: {} (模板式导出，样式完全保留)", report.getReportName());
+        } else {
+            // 回退到原有的 WordExportService
+            log.info("没有模板文件，使用 WordExportService 导出");
+
+            Map<String, TemplateStyle> styleConfig = templateService.getTemplateStyleMap(report.getTemplateId());
+            List<SectionData> sectionTree = buildSectionDataTree(sections, contentMap);
+            String dateRange = formatDateRange(report);
+
+            wordExportService.exportReport(
+                    response.getOutputStream(),
+                    templatePath,
+                    report.getReportName(),
+                    dateRange,
+                    sectionTree,
+                    styleConfig);
+
+            log.info("成功导出报告: {} (使用 Word 内置样式)", report.getReportName());
         }
     }
 
     /**
-     * 加载 Word 模板文件
-     * 优先使用用户上传的模板，否则使用默认模板
+     * 获取模板文件路径
      */
-    private InputStream loadTemplate(Long templateId) throws Exception {
-        // 尝试加载用户上传的模板
-        ReportTemplate reportTemplate = templateService.getById(templateId);
-        if (reportTemplate != null && reportTemplate.getBaseDocxUrl() != null
-                && !reportTemplate.getBaseDocxUrl().isEmpty()) {
-            Path path = Paths.get(uploadDir, "templates", reportTemplate.getBaseDocxUrl());
-            if (Files.exists(path)) {
-                log.info("使用用户上传的模板: {}", path);
-                return Files.newInputStream(path);
-            }
-        }
-
-        // 尝试加载默认模板
+    private Path getTemplatePath(Long templateId) {
         try {
-            ClassPathResource resource = new ClassPathResource("templates/export_template.docx");
-            if (resource.exists()) {
-                log.info("使用默认导出模板: templates/export_template.docx");
-                return resource.getInputStream();
+            ReportTemplate reportTemplate = templateService.getById(templateId);
+            if (reportTemplate != null && reportTemplate.getBaseDocxUrl() != null
+                    && !reportTemplate.getBaseDocxUrl().isEmpty()) {
+                Path path = Paths.get(uploadDir, "templates", reportTemplate.getBaseDocxUrl());
+                if (Files.exists(path)) {
+                    log.info("使用用户上传的模板: {}", path);
+                    return path;
+                }
             }
         } catch (Exception e) {
-            log.warn("默认模板加载失败", e);
+            log.warn("获取模板路径失败: {}", e.getMessage());
         }
-
-        // 最后尝试旧的模板路径
-        try {
-            ClassPathResource resource = new ClassPathResource("templates/template.docx");
-            if (resource.exists()) {
-                log.info("使用旧版模板: templates/template.docx");
-                return resource.getInputStream();
-            }
-        } catch (Exception e) {
-            log.warn("旧版模板加载失败", e);
-        }
-
-        throw new RuntimeException("未找到可用的 Word 模板文件");
+        return null;
     }
 
     /**

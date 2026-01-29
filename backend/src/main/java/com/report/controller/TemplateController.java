@@ -74,12 +74,25 @@ public class TemplateController {
     /**
      * 删除章节
      */
-    /**
-     * 删除章节
-     */
     @DeleteMapping("/sections/{sectionId}")
     public Result<Void> deleteSection(@PathVariable Long sectionId) {
         templateService.deleteSection(sectionId);
+        return Result.success(null);
+    }
+
+    /**
+     * 重新提取模板样式（用于现有模板）
+     */
+    @PostMapping("/{id}/extract-styles")
+    public Result<Void> extractStyles(@PathVariable Long id) {
+        com.report.entity.ReportTemplate template = templateService.getById(id);
+        if (template == null) {
+            return Result.error("模板不存在");
+        }
+        if (template.getBaseDocxUrl() != null && !template.getBaseDocxUrl().isEmpty()) {
+            ((com.report.service.impl.TemplateServiceImpl) templateService)
+                    .extractAndSaveStylesFromPath(id, template.getBaseDocxUrl());
+        }
         return Result.success(null);
     }
 

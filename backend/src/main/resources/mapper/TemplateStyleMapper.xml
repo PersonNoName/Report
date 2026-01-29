@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.report.mapper.TemplateStyleMapper">
+
+    <resultMap id="BaseResultMap" type="com.report.entity.TemplateStyle">
+        <id column="id" property="id"/>
+        <result column="template_id" property="templateId"/>
+        <result column="style_type" property="styleType"/>
+        <result column="font_family" property="fontFamily"/>
+        <result column="font_size" property="fontSize"/>
+        <result column="bold" property="bold"/>
+        <result column="italic" property="italic"/>
+        <result column="font_color" property="fontColor"/>
+        <result column="line_spacing" property="lineSpacing"/>
+        <result column="spacing_before" property="spacingBefore"/>
+        <result column="spacing_after" property="spacingAfter"/>
+        <result column="alignment" property="alignment"/>
+        <result column="first_line_indent" property="firstLineIndent"/>
+        <result column="word_style_id" property="wordStyleId"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id, template_id, style_type, font_family, font_size, bold, italic, 
+        font_color, line_spacing, spacing_before, spacing_after, alignment, 
+        first_line_indent, word_style_id, created_at, updated_at
+    </sql>
+
+    <select id="selectByTemplateId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM template_style
+        WHERE template_id = #{templateId}
+        ORDER BY FIELD(style_type, 'HEADING_1', 'HEADING_2', 'HEADING_3', 'HEADING_4', 'BODY')
+    </select>
+
+    <select id="selectByTemplateIdAndType" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List"/>
+        FROM template_style
+        WHERE template_id = #{templateId} AND style_type = #{styleType}
+    </select>
+
+    <delete id="deleteByTemplateId">
+        DELETE FROM template_style WHERE template_id = #{templateId}
+    </delete>
+
+</mapper>

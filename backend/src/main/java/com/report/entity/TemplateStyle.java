@@ -183,11 +183,11 @@ public class TemplateStyle {
         style.setTemplateId(templateId);
         style.setStyleType("BODY");
         style.setFontFamily("宋体");
-        style.setFontSize(12);
+        style.setFontSize(14); // 四号
         style.setBold(false);
         style.setLineSpacing(1.5);
         style.setSpacingAfter(6.0);
-        style.setFirstLineIndent(24.0); // 两个字符的缩进
+        style.setFirstLineIndent(28.0); // 14pt * 2 = 28pt
         return style;
     }
 }

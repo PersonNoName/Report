@@ -173,6 +173,10 @@ public class StyleExtractor {
     private static void extractFromParagraphs(XWPFDocument doc, Long templateId,
             Map<String, TemplateStyle> styleMap,
             Map<String, String> detectedStyleIds) {
+
+        List<TemplateStyle> bodyCandidates = new ArrayList<>();
+        Map<String, Integer> bodyStyleIdCounts = new HashMap<>();
+
         for (XWPFParagraph paragraph : doc.getParagraphs()) {
             String styleId = paragraph.getStyleID();
             String styleType = null;
@@ -184,23 +188,101 @@ public class StyleExtractor {
                 }
             } else {
                 // 无样式ID的段落视为正文
-                if (!styleMap.containsKey("BODY") && !paragraph.getText().trim().isEmpty()) {
+                if (!paragraph.getText().trim().isEmpty()) {
                     styleType = "BODY";
                 }
             }
 
-            if (styleType != null && !styleMap.containsKey(styleType)) {
-                TemplateStyle ts = extractFromParagraph(paragraph, templateId, styleType, styleId);
-                if (ts != null) {
-                    // 使用探测到的样式 ID 或原始样式 ID
-                    String wordStyleId = detectedStyleIds.getOrDefault(styleType, styleId);
-                    ts.setWordStyleId(wordStyleId);
+            if (styleType != null) {
+                if ("BODY".equals(styleType)) {
+                    // 对于正文，收集所有候选项，最后取出现最频繁的配置
+                    TemplateStyle ts = extractFromParagraph(paragraph, templateId, styleType, styleId);
+                    if (ts != null) {
+                        bodyCandidates.add(ts);
+                        if (styleId != null) {
+                            bodyStyleIdCounts.merge(styleId, 1, Integer::sum);
+                        }
+                    }
+                } else if (!styleMap.containsKey(styleType)) {
+                    // 对于标题，保持"先入为主"策略（通常文档结构靠前的标题是准的）
+                    TemplateStyle ts = extractFromParagraph(paragraph, templateId, styleType, styleId);
+                    if (ts != null) {
+                        // 使用探测到的样式 ID 或原始样式 ID
+                        String wordStyleId = detectedStyleIds.getOrDefault(styleType, styleId);
+                        ts.setWordStyleId(wordStyleId);
 
-                    styleMap.put(styleType, ts);
-                    log.debug("从段落提取样式: {} -> {}, wordStyleId: {}", styleId, styleType, wordStyleId);
+                        styleMap.put(styleType, ts);
+                        log.debug("从段落提取样式: {} -> {}, wordStyleId: {}", styleId, styleType, wordStyleId);
+                    }
                 }
             }
         }
+
+        // 处理正文样式：选择最频繁的配置
+        if (!bodyCandidates.isEmpty()) {
+            TemplateStyle bestBodyStyle = findMostFrequentStyle(bodyCandidates);
+
+            // 确定使用哪个 Word Style ID
+            String bestStyleId = null;
+            if (!bodyStyleIdCounts.isEmpty()) {
+                // 找出出现次数最多的 styleId
+                bestStyleId = bodyStyleIdCounts.entrySet().stream()
+                        .max(Map.Entry.comparingByValue())
+                        .map(Map.Entry::getKey)
+                        .orElse(null);
+            }
+
+            // 如果没有统计到（例如都是空 styleId），使用探测到的默认值
+            if (bestStyleId == null) {
+                bestStyleId = detectedStyleIds.getOrDefault("BODY", "Normal");
+            }
+
+            bestBodyStyle.setWordStyleId(bestStyleId);
+            styleMap.put("BODY", bestBodyStyle);
+            log.info("提取正文样式完成，基于 {} 个段落样本，选定字号: {}, 字体: {}",
+                    bodyCandidates.size(), bestBodyStyle.getFontSize(), bestBodyStyle.getFontFamily());
+        }
+    }
+
+    /**
+     * 找出列表中出现最频繁的样式配置
+     */
+    private static TemplateStyle findMostFrequentStyle(List<TemplateStyle> styles) {
+        if (styles.isEmpty()) {
+            return null;
+        }
+
+        // 使用特征字符串来分组统计
+        Map<String, Integer> frequencyMap = new HashMap<>();
+        Map<String, TemplateStyle> keyToStyleMap = new HashMap<>();
+
+        for (TemplateStyle style : styles) {
+            String key = generateStyleFingerprint(style);
+            frequencyMap.merge(key, 1, Integer::sum);
+            keyToStyleMap.putIfAbsent(key, style);
+        }
+
+        // 找出最频繁的 key
+        String bestKey = frequencyMap.entrySet().stream()
+                .max(Map.Entry.comparingByValue())
+                .map(Map.Entry::getKey)
+                .orElse(null);
+
+        return keyToStyleMap.get(bestKey);
+    }
+
+    /**
+     * 生成样式的指纹特征（用于比较视觉一致性）
+     */
+    private static String generateStyleFingerprint(TemplateStyle s) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("font=").append(s.getFontFamily()).append(";");
+        sb.append("size=").append(s.getFontSize()).append(";");
+        sb.append("bold=").append(s.getBold()).append(";");
+        sb.append("italic=").append(s.getItalic()).append(";");
+        sb.append("color=").append(s.getFontColor()).append(";");
+        // 忽略间距等微小差异，主要关注字体特征
+        return sb.toString();
     }
 
     /**

@@ -164,6 +164,13 @@ public class TemplateBasedExportService {
                     run.addBreak();
                 }
                 run.setText(trimmedLine);
+
+                // 显式清除可能有残留的样式属性（特别是如果继承了标题的加粗）
+                if (run.isBold())
+                    run.setBold(false);
+                if (run.isItalic())
+                    run.setItalic(false);
+
                 first = false;
             }
         }
@@ -223,11 +230,11 @@ public class TemplateBasedExportService {
      */
     private void applyDefaultBodyFormat(XWPFParagraph para, XWPFRun run) {
         run.setFontFamily("宋体");
-        run.setFontSize(12);
+        run.setFontSize(14); // 四号
         run.setBold(false);
 
         // 首行缩进（约两个中文字符）
-        para.setFirstLineIndent(480);
+        para.setFirstLineIndent(560); // 14pt * 20 * 2 chars = 560
 
         // 1.5倍行距
         setLineSpacing(para, 1.5);
